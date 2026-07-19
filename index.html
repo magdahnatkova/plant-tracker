@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Plant Diversity Tracker</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', sans-serif; background: #f0f7f0; color: #2d4a2d; min-height: 100vh; }
@@ -68,7 +70,20 @@
 
 <div id="app"><div class="loading">Loading…</div></div>
 
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAkwkAHNSjdOX0F3aDa0KSg2C_4hrCZIho",
+  authDomain: "plant-tracker-6901e.firebaseapp.com",
+  projectId: "plant-tracker-6901e",
+  storageBucket: "plant-tracker-6901e.firebasestorage.app",
+  messagingSenderId: "451876348947",
+  appId: "1:451876348947:web:cb387fde8c954bb9d6cbe6"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 const GOAL = 50;
 const DAY_NAMES = ['Mo','Tu','We','Th','Fr','Sa','Su'];
 const DAY_NAMES_FULL = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
@@ -157,6 +172,7 @@ const PLANT_DB = {
   "mango":               { fiber: 2.6,  cat: "ovoce" },
   "merunky":             { fiber: 2,    cat: "ovoce" },
   "mungo":               { fiber: 7.6,  cat: "obiloviny" },
+  "jahly":               { fiber: 2.2,  cat: "obiloviny" },
   "petrzel":             { fiber: 0,    cat: "zelenina" },
   "majoranka":           { fiber: 0,    cat: "zelenina" },
   "tymian":              { fiber: 0,    cat: "zelenina" },
