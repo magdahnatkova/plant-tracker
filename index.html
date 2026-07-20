@@ -329,4 +329,308 @@ async function init() {
       state.freq = saved.freq || {};
     }
   } catch (e) {
-    document.getElementById('app').innerHTML
+    document.getElementById('app').innerHTML =
+      '<div class="error-banner">⚠️ Could not connect to Firebase. Check config and Firestore rules.</div>';
+    console.error(e);
+    return;
+  }
+
+  try {
+    const lastWk = getMondayKey(new Date(new Date(wk + 'T00:00:00').getTime() - 7*24*60*60*1000));
+    const arch = await db.collection('archive').doc(user + '_' + lastWk).get();
+    if (arch.exists) {
+      const lastDays = arch.data().days || {};
+      const set = new Set();
+      Object.values(lastDays).forEach(function(arr) { arr.forEach(function(p) { set.add(p.toLowerCase()); }); });
+      state.lastWeekCount = set.size;
+      state.lastWeekKey = lastWk;
+      state.lastWeekDays = lastDays;
+    }
+  } catch (e) {}
+
+  state.others = [];
+  const otherKeys = Object.keys(USERS).filter(function(u) { return u !== user; });
+  for (const otherKey of otherKeys) {
+    try {
+      const snap = await db.collection('users').doc(otherKey).get();
+      let count = 0;
+      if (snap.exists) {
+        const od = snap.data();
+        if (od.weekKey === wk) {
+          const set = new Set();
+          Object.values(od.days || {}).forEach(function(arr) { arr.forEach(function(p) { set.add(p.toLowerCase()); }); });
+          count = set.size;
+        }
+      }
+      state.others.push({
+        key: otherKey,
+        label: USERS[otherKey].label,
+        avatar: USERS[otherKey].avatar,
+        goal: USERS[otherKey].goal,
+        count: count
+      });
+    } catch (e) {}
+  }
+
+  render();
+}
+
+function renderLanding() {
+  let buttons = '';
+  Object.keys(USERS).forEach(function(key) {
+    const u = USERS[key];
+    buttons += '<a class="user-btn" href="?user=' + key + '">' +
+      '<div class="avatar">' + u.avatar + '</div>' +
+      '<div class="uname">' + u.label + '</div>' +
+      '<div class="usub">Goal: ' + u.goal + ' plants/week</div></a>';
+  });
+  document.getElementById('app').innerHTML =
+    '<div class="landing"><p>Choose your profile:</p>' + buttons + '</div>';
+}
+
+function getAllPlantsThisWeek() {
+  const set = new Set();
+  Object.values(state.days).forEach(function(arr) { arr.forEach(function(p) { set.add(p.toLowerCase()); }); });
+  return set;
+}
+
+function getDayFiberTotal(dk) {
+  return (state.days[dk] || []).reduce(function(s, p) { return s + (getFiber(p) || 0); }, 0);
+}
+
+function getSuggestions(val) {
+  const dk = getDayKey(state.weekKey, state.selectedDay);
+  const todaySet = new Set((state.days[dk] || []).map(function(p) { return p.toLowerCase(); }));
+  const sorted = Object.entries(state.freq)
+    .sort(function(a, b) { return b[1] - a[1]; })
+    .map(function(e) { return e[0]; })
+    .filter(function(p) { return !todaySet.has(p); });
+  if (val.trim()) {
+    const v = normalizeKey(val);
+    return sorted.filter(function(p) { return normalizeKey(p).includes(v); }).slice(0, 12);
+  }
+  return sorted.slice(0, 16);
+}
+
+function addPlant(name) {
+  name = name.trim();
+  if (!name) return;
+  const dk = getDayKey(state.weekKey, state.selectedDay);
+  if (!state.days[dk]) state.days[dk] = [];
+  const existing = new Set(state.days[dk].map(function(p) { return p.toLowerCase(); }));
+  if (existing.has(name.toLowerCase())) return;
+  state.days[dk].push(name);
+  state.freq[name.toLowerCase()] = (state.freq[name.toLowerCase()] || 0) + 1;
+  scheduleSave();
+  render();
+}
+
+function removePlant(dk, idx) {
+  if (!state.days[dk]) return;
+  const removed = state.days[dk].splice(idx, 1)[0];
+  if (removed) {
+    const k = removed.toLowerCase();
+    if (state.freq[k] > 1) state.freq[k]--;
+    else delete state.freq[k];
+  }
+  scheduleSave();
+  render();
+}
+
+function render() {
+  const goal = myGoal();
+  const weekPlants = getAllPlantsThisWeek();
+  const pct = Math.min(100, Math.round(weekPlants.size / goal * 100));
+  const dk0 = getDayKey(state.weekKey, state.selectedDay);
+  const todayArr = state.days[dk0] || [];
+  const todayUnique = new Set(todayArr.map(function(p) { return p.toLowerCase(); })).size;
+  const todayFiber = getDayFiberTotal(dk0);
+
+  const catCounts = { zelenina: 0, ovoce: 0, orechy: 0, obiloviny: 0 };
+  weekPlants.forEach(function(p) { catCounts[getCategory(p)]++; });
+
+  let othersHtml = '';
+  if (state.others.length) {
+    const items = state.others.map(function(o) {
+      const remaining = Math.max(0, o.goal - o.count);
+      const status = remaining === 0 ? ' ✅ goal reached!' : ' (' + remaining + ' to go)';
+      return '<span>' + o.avatar + ' ' + o.label + ': <strong>' + o.count + '/' + o.goal + '</strong>' + status +
+        ' <a href="?user=' + o.key + '">View →</a></span>';
+    }).join('');
+    othersHtml = '<div class="others-bar">' + items + '</div>';
+  }
+
+  const myRemaining = Math.max(0, goal - weekPlants.size);
+
+  let html =
+    '<div class="stats">' +
+    '<div class="stat"><div class="val">' + weekPlants.size + '</div><div class="lbl">Unique this week</div></div>' +
+    '<div class="stat"><div class="val">' + pct + '%</div><div class="lbl">Goal reached</div></div>' +
+    '<div class="stat"><div class="val">' + todayUnique + '</div><div class="lbl">Unique today</div></div>' +
+    '<div class="stat fiber"><div class="val">' + todayFiber.toFixed(1) + 'g</div><div class="lbl">Fiber today</div></div>' +
+    '</div>';
+
+  if (state.lastWeekCount !== undefined) {
+    html += '<div class="lastweek-bar">Last week: <strong>' + state.lastWeekCount + ' unique plants</strong></div>';
+  }
+
+  html += othersHtml;
+
+  html += '<div class="progress-wrap"><div class="progress-bar">';
+  Object.entries(catCounts).forEach(function(entry) {
+    if (entry[1] > 0) {
+      html += '<div class="progress-seg" style="width:' + (entry[1]/goal*100) + '%;background:' + CATEGORIES[entry[0]].color + ';"></div>';
+    }
+  });
+  html += '</div><div class="progress-label">' + weekPlants.size + ' / ' + goal + ' plants' +
+    (myRemaining > 0 ? ' · ' + myRemaining + ' to go' : ' · ✅ goal reached!') +
+    '</div><div class="legend">';
+  Object.entries(CATEGORIES).forEach(function(entry) {
+    if (catCounts[entry[0]] > 0) {
+      html += '<span class="legend-item"><span class="legend-dot" style="background:' + entry[1].color + '"></span>' +
+        entry[1].label + ' (' + catCounts[entry[0]] + ')</span>';
+    }
+  });
+  html += '</div></div>';
+
+  html += '<div class="days">';
+  const todayIdx = getTodayDayIndex();
+  for (let i = 0; i < 7; i++) {
+    const dk = getDayKey(state.weekKey, i);
+    const arr = state.days[dk] || [];
+    const u = new Set(arr.map(function(p) { return p.toLowerCase(); })).size;
+    html += '<div class="day-btn' + (i === state.selectedDay ? ' active' : '') + (i === todayIdx ? ' today' : '') +
+      '" onclick="selectDay(' + i + ')">' +
+      '<div class="dname">' + DAY_NAMES[i] + '</div>' +
+      '<div class="dcount">' + u + '</div>' +
+      '<div class="drec">' + arr.length + ' rec.</div></div>';
+  }
+  html += '</div>';
+
+  html +=
+    '<div class="input-area">' +
+    '<div class="input-row">' +
+    '<input type="text" id="plantInput" placeholder="Plant name…" oninput="renderSuggestions(this.value)" ' +
+    'onkeydown="if(event.key===\'Enter\'){doAdd();event.preventDefault()}">' +
+    '<button onclick="doAdd()">Add</button>' +
+    '</div>' +
+    '<div id="suggWrap"></div>' +
+    '<div class="saving" id="savingIndicator"></div>' +
+    '</div>' +
+    '<div class="export-row">' +
+    '<button class="export-btn" onclick="exportWeek(\'current\')">📄 Export this week</button>' +
+    '<button class="export-btn" onclick="exportWeek(\'last\')"' + (state.lastWeekCount === undefined ? ' disabled' : '') + '>📄 Export last week</button>' +
+    '</div>' +
+    '<div class="plants-area">' +
+    '<div class="day-label">' + DAY_NAMES_FULL[state.selectedDay] + ' · total fiber: ' + todayFiber.toFixed(1) + ' g</div>' +
+    '<div class="plant-list">';
+
+  if (!todayArr.length) {
+    html += '<div class="empty">No plants yet — add your first one!</div>';
+  } else {
+    todayArr.forEach(function(p, i) {
+      html += '<div class="plant-tag" ' + catStyle(p) + '>' + escHtml(p) + fiberBadge(p) +
+        '<span class="rm" onclick="removePlant(\'' + dk0 + '\',' + i + ')">×</span></div>';
+    });
+  }
+
+  html += '</div><div class="fiber-note">Fiber values are rough estimates per common serving. "?g" = not in database.</div></div>';
+
+  document.getElementById('app').innerHTML = html;
+  renderSuggestions('');
+}
+
+function renderSuggestions(val) {
+  const wrap = document.getElementById('suggWrap');
+  if (!wrap) return;
+  const sugs = getSuggestions(val);
+  if (!sugs.length) { wrap.innerHTML = ''; return; }
+  let h = '<div class="sug-header">Favorites / Suggestions</div><div class="suggestions">';
+  sugs.forEach(function(s) {
+    h += '<span class="sug" ' + catStyle(s) + ' onclick="pickSug(\'' + escAttr(s) + '\')">' + escHtml(s) + fiberBadge(s) + '</span>';
+  });
+  wrap.innerHTML = h + '</div>';
+}
+
+function exportWeek(which) {
+  const isLast = which === 'last';
+  if (isLast && state.lastWeekCount === undefined) return;
+
+  const goal = myGoal();
+  const src = isLast ? state.lastWeekDays : state.days;
+  const wk = isLast ? state.lastWeekKey : state.weekKey;
+
+  const set = new Set();
+  Object.values(src).forEach(function(arr) { arr.forEach(function(p) { set.add(p.toLowerCase()); }); });
+  const dn = {};
+  Object.values(src).forEach(function(arr) { arr.forEach(function(p) { dn[p.toLowerCase()] = p; }); });
+  let tr = 0;
+  Object.values(src).forEach(function(arr) { tr += arr.length; });
+
+  const parts = wk.split('-').map(Number);
+  const mon = new Date(parts[0], parts[1] - 1, parts[2]);
+  const sun = new Date(mon);
+  sun.setDate(sun.getDate() + 6);
+  const fmt = function(d) {
+    return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
+  };
+
+  const names = Array.from(set).map(function(k) { return dn[k] || k; }).sort(function(a, b) { return a.localeCompare(b, 'en'); });
+
+  let fTotal = 0;
+  const lines = [
+    'PLANT DIVERSITY TRACKER — ' + USERS[state.user].label,
+    'Week: ' + fmt(mon) + ' - ' + fmt(sun) + (isLast ? ' (last week)' : ''),
+    '',
+    'WEEK SUMMARY',
+    'Unique plants: ' + set.size + ' / ' + goal + ' (' + Math.min(100, Math.round(set.size / goal * 100)) + '%)',
+    'Total records: ' + tr,
+    '',
+    'UNIQUE PLANT LIST',
+    '-------------------------------'
+  ];
+  names.forEach(function(p) {
+    const f = getFiber(p);
+    fTotal += f || 0;
+    const fStr = f === null ? '?g' : (f % 1 === 0 ? f + 'g' : f.toFixed(1) + 'g');
+    lines.push('  - ' + p + ' (' + fStr + ') [' + CATEGORIES[getCategory(p)].label + ']');
+  });
+  lines.push('', '-------------------------------', 'Total fiber (unique plants): ' + fTotal.toFixed(1) + ' g', '', 'Note: fiber values are rough estimates per common serving.');
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'plants_' + state.user + '_week_' + wk + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function selectDay(i) { state.selectedDay = i; render(); }
+
+function doAdd() {
+  const inp = document.getElementById('plantInput');
+  if (!inp) return;
+  const v = inp.value;
+  addPlant(v); // this re-renders the whole app, so the old input is gone
+  // grab the freshly rendered input and focus it
+  const newInp = document.getElementById('plantInput');
+  if (newInp) {
+    newInp.value = '';
+    newInp.focus();
+  }
+}
+
+function pickSug(name) {
+  addPlant(name);
+  const newInp = document.getElementById('plantInput');
+  if (newInp) {
+    newInp.value = '';
+    newInp.focus();
+  }
+}
+
+init();
+</script>
+</body>
+</html>
