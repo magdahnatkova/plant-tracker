@@ -90,6 +90,8 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+db.enablePersistence({ synchronizeTabs: true })
+  .catch(function(e) { console.warn('Offline persistence unavailable:', e); }); 
 
 // ── Users & individual goals ──
 const USERS = {
@@ -351,10 +353,7 @@ async function init() {
       state.freq = saved.freq || {};
     }
   } catch (e) {
-    document.getElementById('app').innerHTML =
-      '<div class="error-banner">⚠️ Could not connect to Firebase. Check config and Firestore rules.</div>';
-    console.error(e);
-    return;
+    console.warn('Load failed, continuing with local data:', e);
   }
 
   try {
