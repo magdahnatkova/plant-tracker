@@ -99,7 +99,9 @@ const USERS = {
   martin: { label: "Martin", avatar: "🌿", goal: 30 },
   betule: { label: "Betule", avatar: "🌳", goal: 30 },
   peta:   { label: "Péťa",   avatar: "🌻", goal: 30 },
-  kacka:  { label: "Kačka",  avatar: "🍀", goal: 30 }
+  kacka:  { label: "Kačka",  avatar: "🍀", goal: 30 },
+  // private: hidden from the landing page and the others bar, and sees no one else
+  tami:   { label: "Tami",   avatar: "🌱", goal: 30, private: true }
 };
 
 const DAY_NAMES = ['Mo','Tu','We','Th','Fr','Sa','Su'];
@@ -370,7 +372,8 @@ async function init() {
   } catch (e) {}
 
   state.others = [];
-  const otherKeys = Object.keys(USERS).filter(function(u) { return u !== user; });
+  const otherKeys = USERS[user].private ? [] :
+    Object.keys(USERS).filter(function(u) { return u !== user && !USERS[u].private; });
   for (const otherKey of otherKeys) {
     try {
       const snap = await db.collection('users').doc(otherKey).get();
@@ -400,6 +403,7 @@ function renderLanding() {
   let buttons = '';
   Object.keys(USERS).forEach(function(key) {
     const u = USERS[key];
+    if (u.private) return;
     buttons += '<a class="user-btn" href="?user=' + key + '">' +
       '<div class="avatar">' + u.avatar + '</div>' +
       '<div class="uname">' + u.label + '</div>' +
