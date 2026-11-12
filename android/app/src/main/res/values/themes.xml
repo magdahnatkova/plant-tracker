@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="leaf_dark">#2D6A2D</color>
+    <color name="page_bg">#F0F7F0</color>
+
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/leaf_dark</item>
+        <item name="android:windowBackground">@color/page_bg</item>
+    </style>
+</resources>

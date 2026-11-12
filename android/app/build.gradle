@@ -1,0 +1,49 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The app shows the same index.html as the website, copied in from the repo root at build time.
+def webAppDir = layout.buildDirectory.dir('generated/webapp').get().asFile
+def copyWebApp = tasks.register('copyWebApp', Copy) {
+    from rootProject.file('../index.html')
+    into webAppDir
+}
+
+android {
+    namespace 'io.github.magdahnatkova.planttracker'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'io.github.magdahnatkova.planttracker'
+        minSdk 26
+        targetSdk 34
+        // Each GitHub Actions build gets a higher number, so the phone accepts it as an update.
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger())
+        versionName '1.0'
+    }
+
+    signingConfigs {
+        // A fixed key, so every build can be installed over the previous one.
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
+    sourceSets {
+        main.assets.srcDirs += webAppDir
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+tasks.named('preBuild') { dependsOn copyWebApp }
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+}

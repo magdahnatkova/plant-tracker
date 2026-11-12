@@ -69,6 +69,10 @@
   .fiber-note { font-size: .68em; color: #b0c4b0; margin-top: 12px; line-height: 1.4; }
   .unknown-badge { font-size: .68em; opacity: .6; }
   .saving { font-size: .7em; color: #9ab49a; margin-top: 6px; text-align: right; min-height: 16px; }
+  .name-form { width: 220px; margin-top: 12px; }
+  .name-form p { margin-bottom: 6px; }
+  .name-form input { min-width: 0; }
+  .name-form .name-error { color: #c0392b; margin: 6px 0 0; font-size: .85em; }
   .error-banner { background: #fdecea; color: #c0392b; padding: 12px 16px; font-size: .85em; text-align: center; }
 </style>
 </head>
@@ -409,8 +413,28 @@ function renderLanding() {
       '<div class="uname">' + u.label + '</div>' +
       '<div class="usub">Goal: ' + u.goal + ' plants/week</div></a>';
   });
+  // In the Android app there's no personal link, so private users type their name instead.
+  let nameForm = '';
+  if (window.AndroidApp) {
+    const tried = new URLSearchParams(window.location.search).get('user');
+    nameForm = '<form class="name-form" onsubmit="openProfileByName(this.name.value);return false">' +
+      '<p>Not listed? Type your name:</p>' +
+      '<div class="input-row"><input type="text" name="name" placeholder="Your name…" autocapitalize="words">' +
+      '<button type="submit">Open</button></div>' +
+      (tried ? '<p class="name-error">No profile called “' + escHtml(tried) + '”.</p>' : '') +
+      '</form>';
+  }
   document.getElementById('app').innerHTML =
-    '<div class="landing"><p>Choose your profile:</p>' + buttons + '</div>';
+    '<div class="landing"><p>Choose your profile:</p>' + buttons + nameForm + '</div>';
+}
+
+function openProfileByName(name) {
+  name = name.trim();
+  if (!name) return;
+  const key = Object.keys(USERS).find(function(k) {
+    return k === normalizeKey(name) || normalizeKey(USERS[k].label) === normalizeKey(name);
+  });
+  window.location.search = '?user=' + encodeURIComponent(key || name);
 }
 
 function getAllPlantsThisWeek() {
@@ -622,10 +646,16 @@ function exportWeek(which) {
   });
   lines.push('', '-------------------------------', 'Total fiber (unique plants): ' + fTotal.toFixed(1) + ' g', '', 'Note: fiber values are rough estimates per common serving.');
 
+  const fileName = 'plants_' + state.user + '_week_' + wk + '.txt';
+  if (window.AndroidApp) {
+    window.AndroidApp.shareText(fileName, lines.join('\n'));
+    return;
+  }
+
   const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'plants_' + state.user + '_week_' + wk + '.txt';
+  a.download = fileName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
